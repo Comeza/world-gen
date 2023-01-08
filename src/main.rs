@@ -1,6 +1,6 @@
 #![feature(stmt_expr_attributes)]
 use rand::seq::SliceRandom;
-use std::{fmt::Display};
+use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
@@ -46,6 +46,11 @@ impl Tile {
 }
 
 impl PlotGenerator {
+    /// Iterates over every field.
+    ///     * If found_entropy < entropy: reset the found fields (add current), and entropy = found_entropy
+    ///     * If found_entropy > entropy: ignore
+    ///     * if found_entropy = entropy: add to field array
+    ///     * if found_entropy = 1      : ignore, is already collapsed
     pub fn find_lowest_entropy(&self) -> Vec<(usize, usize)> {
         let mut lowest = vec![];
         let mut entropy = usize::MAX;
@@ -74,8 +79,13 @@ impl PlotGenerator {
         lowest
     }
 
+    // After the current field got updated, update other fields accordingly (remove impossible
+    // states)
     pub fn update_neighbours(&mut self, (x, y): (usize, usize)) {
+        // Method A, updates neighbours in a "+" shape
         let _neighbours: [(isize, isize); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+
+        // Method B, updates neighbours in a "#" shape
         let mut neighbours: [(isize, isize); 8] = [(0, 0); 8];
 
         let mut i = 0;
@@ -88,6 +98,7 @@ impl PlotGenerator {
                 i += 1;
             }
         }
+        // \Method B
 
         let possibilities = match &self.tiles[x][y] {
             WaveState::Superposition(s) => s
@@ -99,6 +110,7 @@ impl PlotGenerator {
         };
 
         for (dx, dy) in neighbours {
+            // skip overflows
             if x as isize + dx < 0 || x as isize + dx >= 16 {
                 continue;
             }
@@ -106,9 +118,11 @@ impl PlotGenerator {
                 continue;
             }
 
+            // calculate offset
             let dx = (x as isize + dx) as usize;
             let dy = (y as isize + dy) as usize;
 
+            // Remove impossible states
             if let WaveState::Superposition(poss) = &mut self.tiles[dx][dy] {
                 *poss = poss
                     .iter()
@@ -119,6 +133,15 @@ impl PlotGenerator {
         }
     }
 
+    /// SEE: [This Video](https://www.youtube.com/watch?v=2SuvO4Gi7uY)
+    ///
+    /// * Find the fields with the lowest entropy,
+    ///     -> if there is just one field, take it
+    ///     -> If there is more than one field, take random
+    ///
+    /// * Collapse field into a field with just one possibility.
+    /// * Update the neighbours, and remove possibilities that got "destoryed", in the previous
+    /// step
     pub fn collapse(&mut self) {
         while let Some((x, y)) = self
             .find_lowest_entropy()
